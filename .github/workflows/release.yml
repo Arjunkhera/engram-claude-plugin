@@ -1,9 +1,13 @@
-# Builds the claude.ai skill zip and attaches it to a release.
-# Push a tag such as v0.1.0 to run it.
+# Publishes a release when the plugin version is new.
+# Each push to master reads "version" from .claude-plugin/plugin.json. If no
+# release v<version> exists, it builds engram-skill.zip and publishes the
+# release. If the release exists, it does nothing. So: bump the version to
+# publish; no tag to push by hand.
 name: release
 on:
   push:
-    tags: ['v*']
+    branches: [master]
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -11,9 +15,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build the skill zip
-        run: cd skills && zip -r ../engram-skill.zip engram
-      - name: Publish the release
+      - name: Read the version
+        id: v
+        run: echo "tag=v$(jq -r .version .claude-plugin/plugin.json)" >> "$GITHUB_OUTPUT"
+      - name: Check for the release
+        id: have
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" engram-skill.zip --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          if gh release view "${{ steps.v.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${{ steps.v.outputs.tag }} exists. Nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build the skill zip
+        if: steps.have.outputs.exists == 'false'
+        run: cd skills && zip -r ../engram-skill.zip engram
+      - name: Publish the release
+        if: steps.have.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ steps.v.outputs.tag }}" engram-skill.zip --target "$GITHUB_SHA" --title "${{ steps.v.outputs.tag }}" --generate-notes
