@@ -1,0 +1,12 @@
+{
+  "name": "engram",
+  "owner": { "name": "Engram" },
+  "metadata": { "description": "The Engram agent kit for Claude Code." },
+  "plugins": [
+    {
+      "name": "engram",
+      "source": "./",
+      "description": "Use Engram as memory and as the store for your own workflows."
+    }
+  ]
+}

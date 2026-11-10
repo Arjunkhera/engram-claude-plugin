@@ -1,0 +1,7 @@
+{
+  "name": "engram",
+  "version": "0.1.0",
+  "description": "Use Engram, your personal knowledge graph, as memory and as the store for your own workflows: tasks, journal, reading list, people and any tracker.",
+  "author": { "name": "Engram" },
+  "homepage": "https://engram.arjunkhera.io"
+}
