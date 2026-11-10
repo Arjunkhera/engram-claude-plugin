@@ -1,0 +1,78 @@
+# The Atlas gate workflow, in this repo's own CI. Its shape job is the repo
+# shape check, judged from the base.
+#
+# It runs on pull_request_target, so GitHub runs this file as the base branch
+# holds it. The job checks out the base and runs the base copy of
+# .github/atlas/check.mjs. It fetches the head as git objects only, and runs none of it.
+#
+# The check writes two trees from git objects, the merge base and the head, in
+# the runner's temp folder, and scores them side by side. No attribute of a
+# tree applies, and no link is written. The no-loss rule says red when a part
+# that the base had is taken away. It says owner when only the owner may
+# approve the change, such as a change to the check or to this file.
+#
+# The token can only read. No checkout keeps a credential: the one fetch of
+# the head takes the token for that command alone. The check step holds no
+# token. The job writes two output keys, result and class.
+#
+# Atlas writes this file and .github/atlas/check.mjs; do not edit the shape job by hand.
+# Design: docs/design-docs/shape-check-from-base/ in the Atlas repo.
+name: atlas-gate
+run-name: "gate #${{ github.event.pull_request.number }} at ${{ github.event.pull_request.head.sha }}"
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: atlas-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  shape:
+    name: gate · shape
+    runs-on: ubuntu-latest
+    # The check reads two trees and opens no network. It finishes in seconds
+    # on a small repo. The bound stops a runner being billed until someone
+    # kills it; a run that hits it is red.
+    timeout-minutes: 10
+    outputs:
+      result: ${{ steps.shape.outputs.result }}
+      class: ${{ steps.shape.outputs.class }}
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      # actions/setup-node v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22.22.0"
+      - name: Fetch the head as objects only
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          header="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=$header" fetch --no-tags --no-recurse-submodules origin "+refs/pull/$PR/head:refs/atlas-gate/head"
+          got="$(git rev-parse --verify refs/atlas-gate/head^{commit})"
+          if [ "$got" != "$HEAD_SHA" ]; then
+            echo "::error::the fetched head is $got, not the head of the event $HEAD_SHA. Push again."
+            exit 1
+          fi
+      - name: Shape check from the base
+        id: shape
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ ! -f .github/atlas/check.mjs ]; then
+            echo "OWNER: first-run: the base has no .github/atlas/check.mjs, so the owner reads the first shape"
+            echo "result=owner" >> "$GITHUB_OUTPUT"
+            echo "class=first-run" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          node .github/atlas/check.mjs --gate --repo "$GITHUB_REPOSITORY" --base-commit "$GITHUB_SHA" --head-commit "$HEAD_SHA"

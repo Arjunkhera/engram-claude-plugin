@@ -1,0 +1,19 @@
+# Atlas repo facts. The root file points; it never holds details.
+#
+# The list of files, and what "filled" means for each, is the spec inside
+# .github/atlas/check.mjs in this repo. Atlas writes that file; do not edit it
+# by hand.
+#
+# This repo is the public copy of the Engram skill for Claude. Its source is
+# integrations/claude-kit in Arjunkhera/Engram. Onboarded on 2026-11-10, at
+# the owner's request.
+spec: 3
+parts: [claude-md, agents-md, docs-index, check-file, gate-workflow]
+product: engram
+repo: Arjunkhera/engram-claude-plugin
+
+# The CI jobs that run on every pull request, with no path filter. The merge
+# door (`atlas gate ready`) merges a pull request only when each one is green
+# on its head. A change to this list is an owner-only change.
+required_checks:
+  - validate

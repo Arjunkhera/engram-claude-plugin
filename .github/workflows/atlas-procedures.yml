@@ -1,0 +1,53 @@
+name: atlas-procedures
+# The Atlas procedure steps (roadmap R40). `atlas tooling` wrote this file from
+# the Atlas package; do not edit it by hand.
+#
+# A procedure is a skill that atlas.yaml names under `procedures:`. A step a
+# clean machine can run sits in a fenced block tagged `atlas-run`. This job
+# runs those blocks for each procedure that a pull request changes: the
+# procedure folder, or a path its `sources:` names. A block tagged
+# `needs=secret/<name>`, `needs=device/<name>` or `needs=network/<name>` is
+# listed "not run here".
+#
+# The path filter starts the job only when a skill or atlas.yaml changes, so
+# most pull requests start nothing. A change to a path that a procedure names
+# in `sources:` alone does not start it; the upkeep check lists that procedure
+# instead. The steps run the code of the pull request, so the job holds a
+# token that can only read and no repo secret, also for a pull request from a
+# fork. npx runs outside the checkout, so an .npmrc in the pull request cannot
+# pick the registry of Atlas itself.
+on:
+  pull_request:
+    paths:
+      - ".claude/skills/**"
+      - "atlas.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas-procedures-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  procedures:
+    name: procedures · tagged steps
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # actions/setup-node v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22.22.0"
+      - name: Run the tagged steps of each procedure this pull request changes
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          npx --yes --ignore-scripts @arjunkhera/atlas@0.4.55 upkeep procedures --root "$GITHUB_WORKSPACE" --base "origin/$BASE_REF" | tee -a "$GITHUB_STEP_SUMMARY"

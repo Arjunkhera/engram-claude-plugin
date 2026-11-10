@@ -1,0 +1,77 @@
+name: atlas-jobs
+# The Atlas watcher: plain code, no model and no secret. `atlas tooling` wrote
+# this file from the Atlas package; do not edit it by hand.
+#
+# It runs once a day from the default branch, and never on a pull request, so
+# a pull request cannot change what it runs. It has two jobs:
+#   check  reads the repo and the CI runs of the default branch. It holds only
+#          read permissions and the run's own token, and no repo secret. The
+#          gate jobs (gate-audit, gate-errors) also read pull requests and
+#          check runs, so the job reads those two as well.
+#   file   holds only issues write. It runs Atlas code on the JSON of the
+#          check job, and files one `atlas-job` issue for each new finding.
+# A job does nothing until atlas.yaml names it under `jobs: { atlas: [...] }`.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: atlas-jobs
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      checks: read
+    outputs:
+      findings: ${{ steps.check.outputs.findings }}
+    steps:
+      # actions/checkout v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      # actions/setup-node v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22.22.0"
+      - name: Run the check of each job that atlas.yaml names
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          # A broken check still hands its JSON on, so the file job reads it and ends the run red.
+          status=0
+          npx --yes --ignore-scripts @arjunkhera/atlas@0.4.55 jobs check --root . --repo "$GITHUB_REPOSITORY" --branch "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/jobs.json" | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          test -s "$RUNNER_TEMP/jobs.json" || { echo "::error::the check wrote no JSON (exit $status)"; exit 1; }
+          echo "findings=$(base64 -w0 < "$RUNNER_TEMP/jobs.json")" >> "$GITHUB_OUTPUT"
+
+  file:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      # actions/setup-node v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "22.22.0"
+      - name: File one issue for each new finding
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FINDINGS: ${{ needs.check.outputs.findings }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$FINDINGS" | base64 -d > "$RUNNER_TEMP/jobs.json"
+          npx --yes --ignore-scripts @arjunkhera/atlas@0.4.55 jobs file --findings "$RUNNER_TEMP/jobs.json" --repo "$GITHUB_REPOSITORY" | tee -a "$GITHUB_STEP_SUMMARY"
