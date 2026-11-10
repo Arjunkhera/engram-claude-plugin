@@ -1,0 +1,18 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [master]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/validate.mjs
+      - name: The skill zip builds
+        run: cd skills && zip -qr ../engram-skill.zip engram && unzip -l ../engram-skill.zip | grep -q 'engram/SKILL.md'
