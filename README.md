@@ -49,4 +49,5 @@ into a claude.ai Project's instructions.
 ## Source
 
 The source of this skill lives in the Engram repo. This repo is a published
-copy. A tag `v*` builds `engram-skill.zip` and attaches it to a release.
+copy. Each merge to `master` with a new version in `.claude-plugin/plugin.json`
+publishes a release with `engram-skill.zip`.
