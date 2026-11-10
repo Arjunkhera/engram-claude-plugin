@@ -1,0 +1,19 @@
+# Builds the claude.ai skill zip and attaches it to a release.
+# Push a tag such as v0.1.0 to run it.
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the skill zip
+        run: cd skills && zip -r ../engram-skill.zip engram
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" engram-skill.zip --title "$GITHUB_REF_NAME" --generate-notes
